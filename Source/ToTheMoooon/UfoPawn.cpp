@@ -17,10 +17,19 @@ AUfoPawn::AUfoPawn()
     SetRootComponent(ShipMesh);
     ShipMesh->SetSimulatePhysics(true);
     ShipMesh->SetEnableGravity(true);
+    // NEW SIDE-VIEW CONSTRAINTS
+    FBodyInstance* BodyInstance = ShipMesh->GetBodyInstance();
+    // Lock movement on the Y-axis (prevents moving toward/away from the camera)
+    BodyInstance->bLockYTranslation = true;
+    // Lock rotation on the X and Y axes to keep the ship oriented correctly
+    BodyInstance->bLockXRotation = true;
+    BodyInstance->bLockYRotation = true;
+
+    /*
     // Important for 2.5D: Constrain movement to the X-Y plane for rotation
     ShipMesh->GetBodyInstance()->bLockZRotation = true;
     ShipMesh->GetBodyInstance()->bLockYRotation = true;
-
+    */
 
     // Create thruster points and attach them to the mesh
     LeftThruster = CreateDefaultSubobject<USceneComponent>(TEXT("LeftThruster"));
@@ -29,16 +38,37 @@ AUfoPawn::AUfoPawn()
     RightThruster = CreateDefaultSubobject<USceneComponent>(TEXT("RightThruster"));
     RightThruster->SetupAttachment(ShipMesh);
 
+    // ---new 2D camera mode---
+// Create the camera spring arm. For a 2D game, can disable lag for a tighter feel.
+    SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
+    SpringArm->SetupAttachment(RootComponent);
+    SpringArm->TargetArmLength = 1500.0f; // How far away the camera is
+    SpringArm->bEnableCameraLag = true; // Optional: A true 2D feel often has no camera lag
+    SpringArm->bDoCollisionTest = false; // Don't try to move camera around obstacles
+	SpringArm->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f)); //Side view camera angle
+
+    // Create and attach the camera
+    Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
+    Camera->SetupAttachment(SpringArm, USpringArmComponent::SocketName);
+
+    // Set the camera to Orthographic (2D) projection
+    Camera->SetProjectionMode(ECameraProjectionMode::Perspective);
+    // Set the size of the viewing area. Adjust this value to zoom in or out.
+    Camera->SetOrthoWidth(3000.0f);
+	
+    /* ---old 2.5D 3D camera code---
     // Create the camera spring arm (for smooth camera movement)
     SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
     SpringArm->SetupAttachment(RootComponent);
-    SpringArm->TargetArmLength = 1200.0f;
+    SpringArm->TargetArmLength = 1500.0f;
     SpringArm->bEnableCameraLag = true;
+    SpringArm->bDoCollisionTest = false; // Don't try to move camera around obstacles
     SpringArm->SetRelativeRotation(FRotator(-50.0f, 0.0f, 0.0f)); // Angled top-down view
 
     // Create and attach the camera
     Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
     Camera->SetupAttachment(SpringArm);
+    */
 
     // Create the physics handle
     PhysicsHandle = CreateDefaultSubobject<UPhysicsHandleComponent>(TEXT("PhysicsHandle"));
@@ -66,42 +96,41 @@ void AUfoPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
     Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-    // Bind movement axes
-    PlayerInputComponent->BindAxis("MoveUp", this, &AUfoPawn::MoveUp);
-    PlayerInputComponent->BindAxis("Turn", this, &AUfoPawn::Turn);
+    // Bind new 2D movement axes
+    PlayerInputComponent->BindAxis("MoveHorizontal", this, &AUfoPawn::MoveHorizontal);
+    PlayerInputComponent->BindAxis("ThrustUp", this, &AUfoPawn::ThrustUp);
 
     // Bind tractor beam actions
     PlayerInputComponent->BindAction("TractorBeam", IE_Pressed, this, &AUfoPawn::StartTractorBeam);
     PlayerInputComponent->BindAction("TractorBeam", IE_Released, this, &AUfoPawn::StopTractorBeam);
 }
 
-// --- MOVEMENT IMPLEMENTATION ---
-void AUfoPawn::MoveUp(float Value)
+void AUfoPawn::MoveHorizontal(float Value)
 {
     if (FMath::Abs(Value) > 0.1f)
     {
-        // Apply force from both thrusters for forward movement
-        FVector ForceDirection = ShipMesh->GetForwardVector() * Value * ThrustForce;
+        // Apply force along the world's X-axis for left/right movement
+        const FVector ForceDirection = FVector::RightVector * Value * ThrustForce;
         ShipMesh->AddForce(ForceDirection);
     }
 }
 
-void AUfoPawn::Turn(float Value)
+void AUfoPawn::ThrustUp(float Value)
 {
+    // Don't allow vertical thrust if the tractor beam is active and hovering
+    if (bIsTractorBeamActive)
+    {
+        return;
+    }
+
     if (FMath::Abs(Value) > 0.1f)
     {
-        // Apply force at a specific thruster's location to create torque and turn the ship
-        FVector ForceDirection = ShipMesh->GetForwardVector() * TurnForce;
-        if (Value > 0) // Turning Right
-        {
-            ShipMesh->AddForceAtLocation(ForceDirection, LeftThruster->GetComponentLocation());
-        }
-        else // Turning Left
-        {
-            ShipMesh->AddForceAtLocation(ForceDirection, RightThruster->GetComponentLocation());
-        }
+        // Apply force along the world's Z-axis for up/down movement
+        const FVector ForceDirection = FVector::UpVector * Value * ThrustForce;
+        ShipMesh->AddForce(ForceDirection);
     }
 }
+
 
 // --- TRACTOR BEAM IMPLEMENTATION ---
 

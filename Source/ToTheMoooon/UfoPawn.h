@@ -70,8 +70,8 @@ public:
 
 private:
     // --- Input Functions ---
-    void MoveUp(float Value);
-    void Turn(float Value);
+    void MoveHorizontal(float Value);
+    void ThrustUp(float Value);
     void StartTractorBeam();
     void StopTractorBeam();
 
