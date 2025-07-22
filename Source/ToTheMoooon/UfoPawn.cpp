@@ -51,10 +51,10 @@ AUfoPawn::AUfoPawn()
     Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
     Camera->SetupAttachment(SpringArm, USpringArmComponent::SocketName);
 
-    // Set the camera to Orthographic (2D) projection
+	// Set the camera to Orthographic for 2D projection or Perspective for 2.5D
     Camera->SetProjectionMode(ECameraProjectionMode::Perspective);
     // Set the size of the viewing area. Adjust this value to zoom in or out.
-    Camera->SetOrthoWidth(3000.0f);
+    Camera->SetOrthoWidth(400.0f);
 	
     /* ---old 2.5D 3D camera code---
     // Create the camera spring arm (for smooth camera movement)

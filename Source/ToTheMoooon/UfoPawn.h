@@ -52,7 +52,7 @@ public:
     // --- Movement Properties ---
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
-    float ThrustForce = 150000.0f; // Force for forward movement
+    float ThrustForce = 100000.0f; // Force for forward movement
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
     float TurnForce = 100000.0f; // Force used for turning
