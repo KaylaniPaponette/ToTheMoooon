@@ -199,7 +199,7 @@ void AUfoPawn::ThrustUp(float Value)
 void AUfoPawn::StartTractorBeam()
 {
     bIsTractorBeamActive = true;
-    ShipMesh->SetEnableGravity(false); // Disable gravity while hovering
+   /*not needed*/ //ShipMesh->SetEnableGravity(false); // Disable gravity while hovering
 
     // Define the cone trace for objects
     FVector Start = GetActorLocation();
@@ -243,28 +243,54 @@ void AUfoPawn::StartTractorBeam()
 void AUfoPawn::StopTractorBeam()
 {
     bIsTractorBeamActive = false;
-    ShipMesh->SetEnableGravity(true); // Re-enable gravity
+    /*not needed*/ //ShipMesh->SetEnableGravity(true); // Re-enable gravity
     PhysicsHandle->ReleaseComponent();
 }
 
 void AUfoPawn::HandleTractorBeam(float DeltaTime)
 {
-    // --- Hover and Leveling Logic ---
-    // 1. Hover: Counteract any existing vertical velocity to hover in place
-    float CurrentZVelocity = ShipMesh->GetPhysicsLinearVelocity().Z;
-    float HoverForce = -CurrentZVelocity / DeltaTime; // Damping force
-    ShipMesh->AddForce(FVector(0, 0, HoverForce), NAME_None, true); // Use Accel Change for mass-independent force
+    // --- Full Stop Hover and Leveling Logic ---
+    FVector CurrentVelocity = ShipMesh->GetPhysicsLinearVelocity();
 
-    // 2. Level Out: Smoothly rotate the ship to be flat
+    // Calculate the required acceleration to counteract velocity (damping) and gravity.
+    // This is applied to all axes to bring the ship to a full stop.
+    FVector DampingAccel = -CurrentVelocity / DeltaTime;
+    FVector GravityCounterAccel = FVector(0, 0, -GetWorld()->GetGravityZ());
+
+    // Apply the combined counter-forces as an acceleration, which is mass-independent.
+    ShipMesh->AddForce(DampingAccel + GravityCounterAccel, NAME_None, true);
+
+    // --- Level Out Logic (remains the same) ---
     FRotator CurrentRotation = GetActorRotation();
     FRotator TargetRotation = FRotator(0, CurrentRotation.Yaw, 0); // Keep yaw, but zero pitch and roll
     FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, LevelingTurnSpeed);
     ShipMesh->SetWorldRotation(NewRotation);
 
-    // --- Update Grabbed Object ---
+    // --- Update Grabbed Object Logic (remains the same) ---
     if (PhysicsHandle->GetGrabbedComponent())
     {
         FVector TargetLocation = GetActorLocation() - FVector(0, 0, TractorBeamRange * 0.5f);
         PhysicsHandle->SetTargetLocation(TargetLocation);
     }
+
+
+    /* old tractor beam logic */
+    //// --- Hover and Leveling Logic ---
+    //// 1. Hover: Counteract any existing vertical velocity to hover in place
+    //float CurrentZVelocity = ShipMesh->GetPhysicsLinearVelocity().Z;
+    //float HoverForce = -CurrentZVelocity / DeltaTime; // Damping force
+    //ShipMesh->AddForce(FVector(0, 0, HoverForce), NAME_None, true); // Use Accel Change for mass-independent force
+
+    //// 2. Level Out: Smoothly rotate the ship to be flat
+    //FRotator CurrentRotation = GetActorRotation();
+    //FRotator TargetRotation = FRotator(0, CurrentRotation.Yaw, 0); // Keep yaw, but zero pitch and roll
+    //FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, LevelingTurnSpeed);
+    //ShipMesh->SetWorldRotation(NewRotation);
+
+    //// --- Update Grabbed Object ---
+    //if (PhysicsHandle->GetGrabbedComponent())
+    //{
+    //    FVector TargetLocation = GetActorLocation() - FVector(0, 0, TractorBeamRange * 0.5f);
+    //    PhysicsHandle->SetTargetLocation(TargetLocation);
+    //}
 }
