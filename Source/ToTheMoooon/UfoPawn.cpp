@@ -106,6 +106,8 @@ void AUfoPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 	// Gravity Gun bindings
 	PlayerInputComponent->BindAction("GravityGun", IE_Pressed, this, &AUfoPawn::StartGravityGun);
 	PlayerInputComponent->BindAction("GravityGun", IE_Released, this, &AUfoPawn::StopGravityGun);
+	PlayerInputComponent->BindAction("RotateObject", IE_Pressed, this, &AUfoPawn::RotateGrabbedObject);
+
 }
 
 // --- Action-based Thruster Input Functions ---
@@ -232,7 +234,15 @@ void AUfoPawn::HandleHovering(float DeltaTime)
 	ShipMesh->SetWorldRotation(NewRotation);
 }
 
-
+void AUfoPawn::RotateGrabbedObject()
+{
+	// We only want to do this if we are holding an object
+	if (PhysicsHandle->GetGrabbedComponent())
+	{
+		// Add 90 degrees to the Yaw (left-right rotation)
+		GrabbedObjectRotation.Roll += 90.0f;
+	}
+}
 
 
 //  -------------------- OLD PHYSICS HANDLE SINGLE GRAB Gravity Gun Logic ----------------
@@ -280,7 +290,12 @@ void AUfoPawn::StartGravityGun()
 
 				GrabbedComponent = HitComponent;
 				GrabbedComponent->SetCollisionResponseToChannel(ECollisionChannel::ECC_Pawn, ECollisionResponse::ECR_Ignore);
-				PhysicsHandle->GrabComponent(GrabbedComponent, NAME_None, Hit.ImpactPoint, true);
+				//PhysicsHandle->GrabComponent(GrabbedComponent, NAME_None, Hit.ImpactPoint, true);
+				// ADD THIS: Reset rotation when grabbing a new object
+				GrabbedObjectRotation = HitComponent->GetComponentRotation();
+
+				// CHANGE THIS FUNCTION: This version allows us to control rotation
+				PhysicsHandle->GrabComponentAtLocationWithRotation(GrabbedComponent, NAME_None, Hit.ImpactPoint, GrabbedObjectRotation);
 
 				// Check if the grab was successful
 				if (PhysicsHandle->GetGrabbedComponent())
@@ -323,6 +338,10 @@ void AUfoPawn::HandleGravityGun(float DeltaTime)
 	{
 		FVector TargetLocation = GetActorLocation() - FVector(0, 0, GravityGunHoldDistance);
 		PhysicsHandle->SetTargetLocation(TargetLocation);
+
+		// ADD THIS: Set the target rotation every frame
+		PhysicsHandle->SetTargetRotation(GrabbedObjectRotation);
+
 		// The rotation is already locked by GrabComponentWithRotation, so no need to set it every frame
 		// Force the object to maintain the saved rotation
 		//PhysicsHandle->SetTargetRotation(GrabbedObjectRotation);

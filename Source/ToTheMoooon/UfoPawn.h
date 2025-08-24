@@ -75,7 +75,7 @@ public:
 
 	// ADD THIS LINE: This will be the distance below the ship to hold the object
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gravity Gun")
-	float GravityGunHoldDistance = 50.0f;
+	float GravityGunHoldDistance = 125.0f;
 
 	//UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gravity Gun")
 	//float GravityGunPullForce = 2500.0f;
@@ -101,6 +101,7 @@ private:
 	// --- Input Functions for Gravity Gun ---
 	void StartGravityGun();
 	void StopGravityGun();
+	void RotateGrabbedObject();
 
 	// --- State & Helper Functions ---
 	void HandleHovering(float DeltaTime);
@@ -115,6 +116,9 @@ private:
 	UPrimitiveComponent* GrabbedComponent = nullptr;
 
 	float LockedXPosition;
+
+	FRotator GrabbedObjectRotation;
+
 	//// An array to hold all the components grabbed with multi-grab method.
 	//TArray<UPrimitiveComponent*> GrabbedComponents;
 
