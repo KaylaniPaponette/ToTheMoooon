@@ -10,6 +10,7 @@
 class UStaticMeshComponent;
 class USpringArmComponent;
 class UCameraComponent;
+class UPhysicsHandleComponent;
 
 UCLASS()
 class TOTHEMOOOON_API AUfoPawn : public APawn
@@ -43,6 +44,10 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	USceneComponent* RightThruster;
 
+	// Added for the gravity gun
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UPhysicsHandleComponent* PhysicsHandle;
+
 	// --- Movement Properties ---
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
 	float UpThrustForce = 100000.0f;
@@ -50,12 +55,30 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
 	float MainThrustForce = 40000.0f;
 
+	// ======== OLD: Direct left/right movement method =========
+		//UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
+	//float HorizontalForce = 50000.0f;
+
 	// ADDED: RollForce for the axis-based movement method
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
 	float RollForce = 30000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
 	float LevelingTurnSpeed = 5.0f;
+
+	// --- Gravity Gun Properties ---
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gravity Gun")
+	float GravityGunRange = 1000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gravity Gun")
+	float GravityGunRadius = 80.0f;
+
+	// ADD THIS LINE: This will be the distance below the ship to hold the object
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gravity Gun")
+	float GravityGunHoldDistance = 50.0f;
+
+	//UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gravity Gun")
+	//float GravityGunPullForce = 2500.0f;
 
 private:
 	// --- Input Functions for Action-based thrusters ---
@@ -75,14 +98,26 @@ private:
 	// --- Helper function to apply forces every frame ---
 	void ApplyThrusterForces();
 
+	// --- Input Functions for Gravity Gun ---
+	void StartGravityGun();
+	void StopGravityGun();
+
 	// --- State & Helper Functions ---
 	void HandleHovering(float DeltaTime);
+	void HandleGravityGun(float DeltaTime);
 
 	// --- State variables to track input ---
 	bool bIsLeftThrusterActive = false;
 	bool bIsRightThrusterActive = false;
 
 	bool bIsHoverActive = false;
+	//bool bIsGravityGunActive = false;
+	UPrimitiveComponent* GrabbedComponent = nullptr;
+
+	float LockedXPosition;
+	//// An array to hold all the components grabbed with multi-grab method.
+	//TArray<UPrimitiveComponent*> GrabbedComponents;
+
 };
 
 //// ========================= NO ROLL FORCE METHOD ===========================

@@ -4,6 +4,9 @@
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
+// For gravity gun
+#include "PhysicsEngine/PhysicsHandleComponent.h" 
+#include "Kismet/KismetSystemLibrary.h" //sphere trace
 
 AUfoPawn::AUfoPawn()
 {
@@ -23,8 +26,8 @@ AUfoPawn::AUfoPawn()
 	FBodyInstance* BodyInstance = ShipMesh->GetBodyInstance();
 	BodyInstance->bLockYTranslation = true;
 	BodyInstance->bLockYRotation = true;
-	// UPDATED: Set to false to allow the ship to roll with the axis-based method
-	BodyInstance->bLockXRotation = false;
+	// UPDATED: Set x-rotation to false to allow the ship to roll with the axis-based method
+	BodyInstance->bLockXRotation = true;
 
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(RootComponent);
@@ -37,18 +40,34 @@ AUfoPawn::AUfoPawn()
 	Camera->SetupAttachment(SpringArm, USpringArmComponent::SocketName);
 	Camera->SetProjectionMode(ECameraProjectionMode::Perspective);
 	Camera->SetOrthoWidth(400.0f);
+
+	// Create the Physics Handle Component
+	PhysicsHandle = CreateDefaultSubobject<UPhysicsHandleComponent>(TEXT("PhysicsHandle"));
+	// ADD THESE LINES to make the handle connection rigid
+	PhysicsHandle->LinearDamping = 200.0f;
+	PhysicsHandle->LinearStiffness = 7500.0f;
+	PhysicsHandle->AngularDamping = 500.0f;
+	PhysicsHandle->AngularStiffness = 1500.0f;
 }
 
 void AUfoPawn::BeginPlay()
 {
 	Super::BeginPlay();
+	LockedXPosition = GetActorLocation().X;
 }
 
 void AUfoPawn::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// This logic remains the same. The axis inputs are processed automatically.
+	// Manually lock the X position every frame to prevent drift
+	FVector CurrentLocation = GetActorLocation();
+	if (CurrentLocation.X != LockedXPosition)
+	{
+		CurrentLocation.X = LockedXPosition;
+		SetActorLocation(CurrentLocation);
+	}
+	
 	if (bIsHoverActive)
 	{
 		HandleHovering(DeltaTime);
@@ -56,6 +75,13 @@ void AUfoPawn::Tick(float DeltaTime)
 	else
 	{
 		ApplyThrusterForces();
+	}
+
+	// Handle the gravity gun logic
+	//if (bIsGravityGunActive)
+	if (PhysicsHandle->GetGrabbedComponent())
+	{
+		HandleGravityGun(DeltaTime);
 	}
 }
 
@@ -76,6 +102,10 @@ void AUfoPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 	// ADDED: Axis-based movement bindings
 	PlayerInputComponent->BindAxis("MoveHorizontal", this, &AUfoPawn::MoveHorizontal);
 	PlayerInputComponent->BindAxis("ThrustUp", this, &AUfoPawn::ThrustUp);
+
+	// Gravity Gun bindings
+	PlayerInputComponent->BindAction("GravityGun", IE_Pressed, this, &AUfoPawn::StartGravityGun);
+	PlayerInputComponent->BindAction("GravityGun", IE_Released, this, &AUfoPawn::StopGravityGun);
 }
 
 // --- Action-based Thruster Input Functions ---
@@ -126,41 +156,57 @@ void AUfoPawn::ApplyThrusterForces()
 	}
 }
 
-// --- ADDED: Axis-based Movement Functions ---
+// --- Axis-based Movement Functions ---
 void AUfoPawn::MoveHorizontal(float Value)
 {
-	// Prevent rolling if hover is active
-	if (bIsHoverActive)
-	{
-		return;
-	}
+	//// Prevent rolling if hover is active
+	//if (bIsHoverActive)
+	//{
+	//	return;
+	//}
 
 	if (FMath::Abs(Value) > 0.1f)
 	{
-		// Use FMath::Abs(Value) to ensure the force is always upward relative to the world.
-		// The direction of the roll is handled by which thruster we apply the force to.
+		// Use FMath::Abs(Value) to ensure the force is always upward relative to the world
+		// The direction of the roll is handled by which thruster force is applied to
 		const FVector ForceDirection = FVector::UpVector * FMath::Abs(Value) * RollForce;
 
 		if (Value > 0) // Pressing 'E' to roll right
 		{
-			// Apply upward force on the left thruster to cause a roll to the right
+			// Apply upward force on the left thruster to cause a roll right
 			ShipMesh->AddForceAtLocation(ForceDirection, LeftThruster->GetComponentLocation());
 		}
 		else // Pressing 'Q' to roll left
 		{
-			// Apply upward force on the right thruster to cause a roll to the left
+			// Apply upward force on the right thruster to roll left
 			ShipMesh->AddForceAtLocation(ForceDirection, RightThruster->GetComponentLocation());
 		}
 	}
 }
+// ======== OLD: Direct left/right movement method =========
+//void AUfoPawn::MoveHorizontal(float Value)
+//{
+//	// Prevent moving if hover is active
+//	if (bIsHoverActive)
+//	{
+//		return;
+//	}
+//
+//	if (FMath::Abs(Value) > 0.1f)
+//	{
+//		// Apply force along the world's Y-axis for direct left/right movement
+//		const FVector ForceDirection = FVector::RightVector * Value * HorizontalForce;
+//		ShipMesh->AddForce(ForceDirection);
+//	}
+//}
 
 void AUfoPawn::ThrustUp(float Value)
 {
-	// Prevent thrusting if hover is active
-	if (bIsHoverActive)
-	{
-		return;
-	}
+	//// Prevent thrusting if hover is active
+	//if (bIsHoverActive)
+	//{
+	//	return;
+	//}
 	if (FMath::Abs(Value) > 0.1f)
 	{
 		// Apply force along the SHIP'S up-vector.
@@ -174,7 +220,7 @@ void AUfoPawn::ThrustUp(float Value)
 // --- Hovering Implementation ---
 void AUfoPawn::HandleHovering(float DeltaTime)
 {
-	// 1. Hover: Counteract any existing vertical velocity to stop vertical movement.
+	// 1. Hover: Counteract any existing vertical velocity to stop vertical movement
 	const float CurrentZVelocity = ShipMesh->GetPhysicsLinearVelocity().Z;
 	const float HoverForce = -CurrentZVelocity / DeltaTime; // Damping force
 	ShipMesh->AddForce(FVector(0, 0, HoverForce), NAME_None, true); // Use Accel Change for mass-independent force
@@ -185,6 +231,177 @@ void AUfoPawn::HandleHovering(float DeltaTime)
 	const FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, LevelingTurnSpeed);
 	ShipMesh->SetWorldRotation(NewRotation);
 }
+
+
+
+
+//  -------------------- OLD PHYSICS HANDLE SINGLE GRAB Gravity Gun Logic ----------------
+ // --- Gravity Gun Implementation ---
+
+void AUfoPawn::StartGravityGun()
+{
+	// Log when we try to fire the gun
+	UE_LOG(LogTemp, Warning, TEXT("Attempting to fire Gravity Gun..."));
+
+	if (GrabbedComponent)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("...Failed: Already holding an object."));
+		return;
+	}
+
+	FVector Start = GetActorLocation();
+	FVector End = Start - FVector(0, 0, GravityGunRange);
+	TArray<FHitResult> OutHits;
+	TArray<AActor*> ActorsToIgnore;
+	ActorsToIgnore.Add(this);
+
+	bool bHit = UKismetSystemLibrary::SphereTraceMultiForObjects(
+		GetWorld(),
+		Start,
+		End,
+		GravityGunRadius,
+		{ UEngineTypes::ConvertToObjectType(ECollisionChannel::ECC_PhysicsBody) },
+		false,
+		ActorsToIgnore,
+		EDrawDebugTrace::ForDuration,
+		OutHits,
+		true
+	);
+
+	if (bHit)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("...Success: Trace HIT something!"));
+		for (const FHitResult& Hit : OutHits)
+		{
+			UPrimitiveComponent* HitComponent = Hit.GetComponent();
+			if (HitComponent && HitComponent->IsSimulatingPhysics())
+			{
+				UE_LOG(LogTemp, Warning, TEXT("...Success: Found a physics object to grab: %s"), *HitComponent->GetName());
+
+				GrabbedComponent = HitComponent;
+				GrabbedComponent->SetCollisionResponseToChannel(ECollisionChannel::ECC_Pawn, ECollisionResponse::ECR_Ignore);
+				PhysicsHandle->GrabComponent(GrabbedComponent, NAME_None, Hit.ImpactPoint, true);
+
+				// Check if the grab was successful
+				if (PhysicsHandle->GetGrabbedComponent())
+				{
+					UE_LOG(LogTemp, Warning, TEXT("...Success: PhysicsHandle GRABBED the component!"));
+				}
+				else
+				{
+					UE_LOG(LogTemp, Error, TEXT("...Failed: PhysicsHandle FAILED to grab the component."));
+				}
+
+				return;
+			}
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("...Failed: Trace MISSED everything."));
+	}
+}
+
+void AUfoPawn::StopGravityGun()
+{
+	if (GrabbedComponent)
+	{
+		// Re-enable collision with the ship
+		GrabbedComponent->SetCollisionResponseToChannel(ECollisionChannel::ECC_Pawn, ECollisionResponse::ECR_Block);
+
+		// Release it from the physics handle
+		PhysicsHandle->ReleaseComponent();
+
+		// Clear our pointer
+		GrabbedComponent = nullptr;
+	}
+}
+
+void AUfoPawn::HandleGravityGun(float DeltaTime)
+{
+	if (PhysicsHandle->GetGrabbedComponent())
+	{
+		FVector TargetLocation = GetActorLocation() - FVector(0, 0, GravityGunHoldDistance);
+		PhysicsHandle->SetTargetLocation(TargetLocation);
+		// The rotation is already locked by GrabComponentWithRotation, so no need to set it every frame
+		// Force the object to maintain the saved rotation
+		//PhysicsHandle->SetTargetRotation(GrabbedObjectRotation);
+	}
+}
+
+//// --- Gravity Gun Implementation (Multi-Grab Version) ---
+//
+//void AUfoPawn::StartGravityGun()
+//{
+//	bIsGravityGunActive = true;
+//
+//	// Clear any previously grabbed objects
+//	GrabbedComponents.Empty();
+//
+//	FVector Start = GetActorLocation();
+//	FVector End = Start - FVector(0, 0, GravityGunRange);
+//	TArray<FHitResult> OutHits;
+//	TArray<AActor*> ActorsToIgnore;
+//	ActorsToIgnore.Add(this);
+//
+//	// CORRECTED: This now correctly looks for the PhysicsBody object type, which will match your cube's settings.
+//	// This also uses the original SphereTraceMultiForObjects function to avoid the red underline error.
+//	bool bHit = UKismetSystemLibrary::SphereTraceMultiForObjects(
+//		GetWorld(),
+//		Start,
+//		End,
+//		GravityGunRadius,
+//		{ UEngineTypes::ConvertToObjectType(ECollisionChannel::ECC_PhysicsBody) }, // This is the fix!
+//		false,
+//		ActorsToIgnore,
+//		EDrawDebugTrace::ForDuration,
+//		OutHits,
+//		true
+//	);
+//
+//	if (bHit)
+//	{
+//		for (const FHitResult& Hit : OutHits)
+//		{
+//			UPrimitiveComponent* HitComponent = Hit.GetComponent();
+//			if (HitComponent && HitComponent->IsSimulatingPhysics())
+//			{
+//				// Add every valid physics object to our array
+//				GrabbedComponents.Add(HitComponent);
+//			}
+//		}
+//	}
+//}
+//
+//void AUfoPawn::StopGravityGun()
+//{
+//	bIsGravityGunActive = false;
+//	// Clear the array of grabbed objects
+//	GrabbedComponents.Empty();
+//}
+//
+//void AUfoPawn::HandleGravityGun(float DeltaTime)
+//{
+//	// Check if we have any components in our array
+//	if (GrabbedComponents.Num() > 0)
+//	{
+//		FVector TargetLocation = GetActorLocation() - FVector(0, 0, GravityGunRange * 0.5f);
+//
+//		// Loop through all the components we've grabbed
+//		for (UPrimitiveComponent* GrabbedComp : GrabbedComponents)
+//		{
+//			if (GrabbedComp)
+//			{
+//				// Calculate the direction from the object to the target location
+//				FVector PullDirection = (TargetLocation - GrabbedComp->GetComponentLocation()).GetSafeNormal();
+//				// Apply a force to the object, ignoring its mass
+//				// The 'true' at the end makes this an acceleration change, which is mass-independent.
+//				GrabbedComp->AddForce(PullDirection * GravityGunPullForce, NAME_None, true);
+//			}
+//		}
+//	}
+//}
+
 
 
 //// ========================= NO ROLL FORCE METHOD ===========================
