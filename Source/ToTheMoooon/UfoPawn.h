@@ -4,7 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
+#include "Blueprint/UserWidget.h"
 #include "UfoPawn.generated.h"
+
 
 // Forward declarations
 class UStaticMeshComponent;
@@ -49,33 +51,53 @@ public:
 	UPhysicsHandleComponent* PhysicsHandle;
 
 	// --- Movement Properties ---
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
 	float UpThrustForce = 100000.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
 	float MainThrustForce = 40000.0f;
 
-	// ======== OLD: Direct left/right movement method =========
+		// ======== OLD: Direct left/right movement method =========
 		//UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
-	//float HorizontalForce = 50000.0f;
+		//float HorizontalForce = 50000.0f;
 
-	// ADDED: RollForce for the axis-based movement method
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
+	// RollForce for the axis-based movement method
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
 	float RollForce = 30000.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
 	float LevelingTurnSpeed = 5.0f;
 
+	// --- Health System Properties ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
+	float MaxHealth = 100.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Health")
+	float CurrentHealth;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Game Over")
+	FName GameOverMapName;
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<class UUserWidget> HudWidgetClass;
+
 	// --- Gravity Gun Properties ---
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gravity Gun")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gravity Gun")
 	float GravityGunRange = 1000.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gravity Gun")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gravity Gun")
 	float GravityGunRadius = 80.0f;
 
-	// ADD THIS LINE: This will be the distance below the ship to hold the object
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gravity Gun")
+	// Distance below the ship to hold the object
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gravity Gun")
 	float GravityGunHoldDistance = 125.0f;
+
+	// Shrinking mechanic
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gravity Gun")
+	float ShrinkFactor = 0.9f; // Shrink object to 90% of its current size
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gravity Gun")
+	float MinScale = 0.1f; // Smallest an object can get 10% of original size
 
 	//UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gravity Gun")
 	//float GravityGunPullForce = 2500.0f;
@@ -102,10 +124,18 @@ private:
 	void StartGravityGun();
 	void StopGravityGun();
 	void RotateGrabbedObject();
+	void ShrinkGrabbedObject();
+
 
 	// --- State & Helper Functions ---
 	void HandleHovering(float DeltaTime);
 	void HandleGravityGun(float DeltaTime);
+
+	// --- Health System Functions ---
+	void HandleDamage(float DamageAmount);
+
+	UFUNCTION()
+	void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
 	// --- State variables to track input ---
 	bool bIsLeftThrusterActive = false;
@@ -123,6 +153,14 @@ private:
 	//TArray<UPrimitiveComponent*> GrabbedComponents;
 
 };
+
+
+
+
+
+
+
+
 
 //// ========================= NO ROLL FORCE METHOD ===========================
 //// ========================= SIMPLIFY HOVER LOGIC ===========================

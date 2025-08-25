@@ -4,9 +4,9 @@
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
-// For gravity gun
-#include "PhysicsEngine/PhysicsHandleComponent.h" 
-#include "Kismet/KismetSystemLibrary.h" //sphere trace
+#include "PhysicsEngine/PhysicsHandleComponent.h" // For gravity gun
+#include "Kismet/KismetSystemLibrary.h" // Sphere trace
+#include "Kismet/GameplayStatics.h" // For OpenLevel
 
 AUfoPawn::AUfoPawn()
 {
@@ -16,6 +16,8 @@ AUfoPawn::AUfoPawn()
 	SetRootComponent(ShipMesh);
 	ShipMesh->SetSimulatePhysics(true);
 	ShipMesh->SetEnableGravity(true);
+	ShipMesh->SetNotifyRigidBodyCollision(true);
+
 
 	LeftThruster = CreateDefaultSubobject<USceneComponent>(TEXT("LeftThruster"));
 	LeftThruster->SetupAttachment(ShipMesh);
@@ -26,8 +28,8 @@ AUfoPawn::AUfoPawn()
 	FBodyInstance* BodyInstance = ShipMesh->GetBodyInstance();
 	BodyInstance->bLockYTranslation = true;
 	BodyInstance->bLockYRotation = true;
-	// UPDATED: Set x-rotation to false to allow the ship to roll with the axis-based method
-	BodyInstance->bLockXRotation = true;
+	// Set to true to stop from moving forward/back
+	BodyInstance->bLockXRotation = true; // Set to false to allow the ship to roll
 
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(RootComponent);
@@ -41,19 +43,45 @@ AUfoPawn::AUfoPawn()
 	Camera->SetProjectionMode(ECameraProjectionMode::Perspective);
 	Camera->SetOrthoWidth(400.0f);
 
-	// Create the Physics Handle Component
+	// Create the Physics Handle Component for gravity gun
 	PhysicsHandle = CreateDefaultSubobject<UPhysicsHandleComponent>(TEXT("PhysicsHandle"));
-	// ADD THESE LINES to make the handle connection rigid
+	// ADDDED to make the handle connection rigid
 	PhysicsHandle->LinearDamping = 200.0f;
 	PhysicsHandle->LinearStiffness = 7500.0f;
 	PhysicsHandle->AngularDamping = 500.0f;
 	PhysicsHandle->AngularStiffness = 1500.0f;
+
+	CurrentHealth = MaxHealth;
+	ShipMesh->OnComponentHit.AddDynamic(this, &AUfoPawn::OnHit);
+
 }
 
 void AUfoPawn::BeginPlay()
 {
 	Super::BeginPlay();
-	LockedXPosition = GetActorLocation().X;
+	LockedXPosition = GetActorLocation().X; // Store the initial X position to lock it
+
+	// Create and display the HUD widget
+	if (HudWidgetClass)
+	{
+		UUserWidget* HudWidget = CreateWidget<UUserWidget>(GetWorld(), HudWidgetClass);
+		if (HudWidget)
+		{
+			HudWidget->AddToViewport();
+		}
+	}
+
+	// Configure input mode and cursor visibility
+	APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
+	if (PlayerController)
+	{
+		// Set input mode to Game and UI to allow interaction with both the game and UI elements.
+		FInputModeGameAndUI InputMode;
+		PlayerController->SetInputMode(InputMode);
+
+		// Hide the mouse cursor for a cleaner look
+		PlayerController->bShowMouseCursor = false;
+	}
 }
 
 void AUfoPawn::Tick(float DeltaTime)
@@ -78,7 +106,7 @@ void AUfoPawn::Tick(float DeltaTime)
 	}
 
 	// Handle the gravity gun logic
-	//if (bIsGravityGunActive)
+	//if (bIsGravityGunActive)				-- OLD: Multi-grab version
 	if (PhysicsHandle->GetGrabbedComponent())
 	{
 		HandleGravityGun(DeltaTime);
@@ -107,6 +135,7 @@ void AUfoPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 	PlayerInputComponent->BindAction("GravityGun", IE_Pressed, this, &AUfoPawn::StartGravityGun);
 	PlayerInputComponent->BindAction("GravityGun", IE_Released, this, &AUfoPawn::StopGravityGun);
 	PlayerInputComponent->BindAction("RotateObject", IE_Pressed, this, &AUfoPawn::RotateGrabbedObject);
+	PlayerInputComponent->BindAction("ShrinkObject", IE_Pressed, this, &AUfoPawn::ShrinkGrabbedObject);
 
 }
 
@@ -173,34 +202,34 @@ void AUfoPawn::MoveHorizontal(float Value)
 		// The direction of the roll is handled by which thruster force is applied to
 		const FVector ForceDirection = FVector::UpVector * FMath::Abs(Value) * RollForce;
 
-		if (Value > 0) // Pressing 'E' to roll right
+		if (Value > 0) // E to roll right
 		{
 			// Apply upward force on the left thruster to cause a roll right
 			ShipMesh->AddForceAtLocation(ForceDirection, LeftThruster->GetComponentLocation());
 		}
-		else // Pressing 'Q' to roll left
+		else // Q to roll left
 		{
 			// Apply upward force on the right thruster to roll left
 			ShipMesh->AddForceAtLocation(ForceDirection, RightThruster->GetComponentLocation());
 		}
 	}
 }
-// ======== OLD: Direct left/right movement method =========
-//void AUfoPawn::MoveHorizontal(float Value)
-//{
-//	// Prevent moving if hover is active
-//	if (bIsHoverActive)
-//	{
-//		return;
-//	}
-//
-//	if (FMath::Abs(Value) > 0.1f)
-//	{
-//		// Apply force along the world's Y-axis for direct left/right movement
-//		const FVector ForceDirection = FVector::RightVector * Value * HorizontalForce;
-//		ShipMesh->AddForce(ForceDirection);
-//	}
-//}
+				// ======== OLD: Direct left/right movement method =========
+				//void AUfoPawn::MoveHorizontal(float Value)
+				//{
+				//	// Prevent moving if hover is active
+				//	if (bIsHoverActive)
+				//	{
+				//		return;
+				//	}
+				//
+				//	if (FMath::Abs(Value) > 0.1f)
+				//	{
+				//		// Apply force along the world's Y-axis for direct left/right movement
+				//		const FVector ForceDirection = FVector::RightVector * Value * HorizontalForce;
+				//		ShipMesh->AddForce(ForceDirection);
+				//	}
+				//}
 
 void AUfoPawn::ThrustUp(float Value)
 {
@@ -234,15 +263,45 @@ void AUfoPawn::HandleHovering(float DeltaTime)
 	ShipMesh->SetWorldRotation(NewRotation);
 }
 
-void AUfoPawn::RotateGrabbedObject()
+// --- Health System Implementation ---
+void AUfoPawn::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	// We only want to do this if we are holding an object
-	if (PhysicsHandle->GetGrabbedComponent())
+
+	// Check whether collision is with a valid actor/component and not the grabbed object
+	if (OtherActor && OtherActor != this && OtherComp != GrabbedComponent && !OtherActor->ActorHasTag(TEXT("NoDamage")))
 	{
-		// Add 90 degrees to the Yaw (left-right rotation)
-		GrabbedObjectRotation.Roll += 90.0f;
+		UE_LOG(LogTemp, Warning, TEXT("OnHit fired! Collided with: %s"), *OtherActor->GetName());
+
+		// Apply 10 points of damage
+		HandleDamage(1.0f);
 	}
 }
+
+void AUfoPawn::HandleDamage(float DamageAmount)
+{
+	// Subtract damage from current health, ensuring it doesn't go below zero.
+	CurrentHealth = FMath::Max(0.0f, CurrentHealth - DamageAmount);
+
+	// Log the damage and current health to the output log for debugging.
+	UE_LOG(LogTemp, Warning, TEXT("UFO took %f damage. Current health: %f"), DamageAmount, CurrentHealth);
+
+	// Check if the pawn should be destroyed.
+	if (CurrentHealth <= 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("UFO has been destroyed! GAME OVER."));
+		// Check if the map name has been set in the editor
+		if (!GameOverMapName.IsNone())
+		{
+			UGameplayStatics::OpenLevel(this, GameOverMapName);
+			UE_LOG(LogTemp, Error, TEXT("UFO has been destroyed! Loading GameOverMapName."), GameOverMapName);
+
+		}
+
+		Destroy();
+	}
+}
+
+
 
 
 //  -------------------- OLD PHYSICS HANDLE SINGLE GRAB Gravity Gun Logic ----------------
@@ -339,7 +398,7 @@ void AUfoPawn::HandleGravityGun(float DeltaTime)
 		FVector TargetLocation = GetActorLocation() - FVector(0, 0, GravityGunHoldDistance);
 		PhysicsHandle->SetTargetLocation(TargetLocation);
 
-		// ADD THIS: Set the target rotation every frame
+		// ADDED to set the target rotation every frame
 		PhysicsHandle->SetTargetRotation(GrabbedObjectRotation);
 
 		// The rotation is already locked by GrabComponentWithRotation, so no need to set it every frame
@@ -347,6 +406,49 @@ void AUfoPawn::HandleGravityGun(float DeltaTime)
 		//PhysicsHandle->SetTargetRotation(GrabbedObjectRotation);
 	}
 }
+
+void AUfoPawn::RotateGrabbedObject()
+{
+	// We only want to do this if we are holding an object
+	if (PhysicsHandle->GetGrabbedComponent())
+	{
+		// Add 90 degrees to the Yaw (left-right rotation)
+		GrabbedObjectRotation.Roll += 90.0f;
+	}
+}
+
+void AUfoPawn::ShrinkGrabbedObject()
+{
+	if (GrabbedComponent)
+	{
+		// Get the Actor that the component belongs to
+		AActor* GrabbedActor = GrabbedComponent->GetOwner();
+		if (GrabbedActor)
+		{
+			// Get the current scale of the actor
+			FVector CurrentScale = GrabbedActor->GetActorScale3D();
+			// Calculate the new scale
+			FVector NewScale = CurrentScale * ShrinkFactor;
+
+			// Check that the new scale is above the minimum threshold
+			if (NewScale.X >= MinScale && NewScale.Y >= MinScale && NewScale.Z >= MinScale)
+			{
+				// Apply the new scale to the actor
+				GrabbedActor->SetActorScale3D(NewScale);
+				UE_LOG(LogTemp, Warning, TEXT("Shrinking object %s to scale %s"), *GrabbedActor->GetName(), *NewScale.ToString());
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Object %s has reached its minimum scale."), *GrabbedActor->GetName());
+			}
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Shrink button pressed, but no object is grabbed."));
+	}
+}
+
 
 //// --- Gravity Gun Implementation (Multi-Grab Version) ---
 //
